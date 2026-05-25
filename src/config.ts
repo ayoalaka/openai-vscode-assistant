@@ -42,3 +42,15 @@ export async function resetApiKey(
   await context.secrets.delete(API_KEY_SECRET);
   vscode.window.showInformationMessage("OpenAI API key reset.");
 }
+
+export function getDefaultModel(): string {
+  return vscode.workspace
+    .getConfiguration("openaiAssistant")
+    .get<string>("defaultModel", "gpt-4.1-mini");
+}
+
+export function getAdvancedModel(): string {
+  return vscode.workspace
+    .getConfiguration("openaiAssistant")
+    .get<string>("advancedModel", "gpt-4.1");
+}

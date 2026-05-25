@@ -5,6 +5,8 @@ import { SYSTEM_PROMPTS } from "../prompts";
 import {
   getEditorContext,
   buildCodeContextPrompt,
+  insertTextAtCursor,
+  replaceSelection,
 } from "../utils/editor";
 
 export class ChatPanel {
@@ -12,6 +14,7 @@ export class ChatPanel {
 
   private readonly panel: vscode.WebviewPanel;
   private readonly context: vscode.ExtensionContext;
+  private lastAssistantResponse = "";
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -25,6 +28,12 @@ export class ChatPanel {
     this.panel.webview.onDidReceiveMessage(async (message) => {
       if (message.type === "chat") {
         await this.handleChatMessage(message.text);
+      }
+      if (message.type === "insert-last-response") {
+        await insertTextAtCursor(this.lastAssistantResponse);
+      }
+      if (message.type === "replace-selection") {
+        await replaceSelection(this.lastAssistantResponse);
       }
     });
 
@@ -112,7 +121,8 @@ export class ChatPanel {
       this.messages.push({
         role: "assistant",
         content: assistantResponse,
-      }); 
+      });
+      this.lastAssistantResponse = assistantResponse;
     } catch (error) {
       this.panel.webview.postMessage({
         type: "assistant-error",
@@ -322,6 +332,8 @@ export class ChatPanel {
 
                 <div class="actions">
                     <button onclick="sendMessage()">Send</button>
+                    <button class="secondary" onclick="insertLastResponse()">Insert Last</button>
+                    <button class="secondary" onclick="replaceSelection()">Replace Selection</button>
                     <button class="secondary" onclick="clearChat()">Clear</button>
                 </div>
 
@@ -333,6 +345,18 @@ export class ChatPanel {
             const vscode = acquireVsCodeApi();
             const messages = document.getElementById("messages");
             let currentAssistantBubble = null;
+
+            function replaceSelection() {
+                vscode.postMessage({
+                    type: "replace-selection"
+                });
+            }
+
+            function insertLastResponse() {
+                vscode.postMessage({
+                    type: "insert-last-response"
+                });
+            }
 
             function appendMessage(role, text) {
                 const wrapper = document.createElement("div");

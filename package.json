@@ -3,7 +3,7 @@
   "displayName": "OpenAI VS Code Assistant",
   "description": "A personal coding assistant powered by the OpenAI API.",
   "version": "0.0.1",
-  "publisher": "Ayomide Alaka",
+  "publisher": "ayomidealaka",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -11,6 +11,7 @@
     "Other"
   ],
   "activationEvents": [
+    "onView:openaiAssistant.chatView",
     "onCommand:openaiAssistant.ask",
     "onCommand:openaiAssistant.explainCode",
     "onCommand:openaiAssistant.fixCode",
@@ -20,6 +21,24 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "openaiAssistant",
+          "title": "OpenAI Assistant",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "openaiAssistant": [
+        {
+          "id": "openaiAssistant.chatView",
+          "name": "Chat",
+          "type": "webview"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "openaiAssistant.openChat",
@@ -49,10 +68,15 @@
     "configuration": {
       "title": "OpenAI Assistant",
       "properties": {
-        "openaiAssistant.model": {
+        "openaiAssistant.defaultModel": {
           "type": "string",
           "default": "gpt-4.1-mini",
-          "description": "OpenAI model used by the coding assistant."
+          "description": "Default low-cost model for normal coding tasks."
+        },
+        "openaiAssistant.advancedModel": {
+          "type": "string",
+          "default": "gpt-4.1",
+          "description": "Stronger model for harder debugging/refactoring tasks."
         },
         "openaiAssistant.maxOutputTokens": {
           "type": "number",
@@ -73,6 +97,7 @@
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.9.1",
     "typescript": "^5.4.5"
   }
 }

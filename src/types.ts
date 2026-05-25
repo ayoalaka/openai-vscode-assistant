@@ -5,6 +5,9 @@ export interface WorkspaceContext {
   activeFileText?: string;
   relatedFiles: RelatedFile[];
   workspaceFolders: string[];
+  agentInstructions: AgentInstruction[];
+  ideContext: IdeContext;
+  memories: LearnedMemory[];
 }
 
 export interface RelatedFile {
@@ -42,4 +45,36 @@ export interface IndexEntry {
   size: number;
   mtime: number;
   snippet: string;
+}
+
+export interface ApiUsage {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+}
+
+export interface AgentInstruction {
+  path: string;
+  content: string;
+}
+
+export interface IdeContext {
+  openFiles: string[];
+  diagnostics: DiagnosticContext[];
+  gitDiff?: string;
+}
+
+export interface DiagnosticContext {
+  filePath: string;
+  severity: string;
+  message: string;
+  line: number;
+}
+
+export interface LearnedMemory {
+  timestamp: number;
+  kind: "accepted-edit" | "rejected-edit" | "command";
+  summary: string;
 }

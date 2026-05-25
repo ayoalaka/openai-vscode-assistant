@@ -2,6 +2,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 
 import { EditPlan, ProposedEdit } from "../types";
+import { ContextMemoryService } from "./contextMemory";
 
 const PREVIEW_SCHEME = "openai-assistant-preview";
 
@@ -12,7 +13,10 @@ export class EditManager implements vscode.TextDocumentContentProvider {
 
   readonly onDidChange = this.emitter.event;
 
-  constructor(private readonly context: vscode.ExtensionContext) {
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly memory?: ContextMemoryService
+  ) {
     this.context.subscriptions.push(
       vscode.workspace.registerTextDocumentContentProvider(PREVIEW_SCHEME, this)
     );
@@ -58,12 +62,21 @@ export class EditManager implements vscode.TextDocumentContentProvider {
     const applied = await vscode.workspace.applyEdit(workspaceEdit);
 
     if (applied) {
+      await this.memory?.rememberAcceptedEdit(this.pendingPlan.summary);
       this.pendingPlan = undefined;
       this.previewContent.clear();
       vscode.window.showInformationMessage("Applied assistant edits.");
     } else {
       vscode.window.showErrorMessage("Failed to apply assistant edits.");
     }
+  }
+
+  async rememberRejectedPlan(): Promise<void> {
+    if (this.pendingPlan) {
+      await this.memory?.rememberRejectedEdit(this.pendingPlan.summary);
+    }
+
+    this.rejectPendingPlan();
   }
 
   private async showDiffs(edits: ProposedEdit[]): Promise<void> {

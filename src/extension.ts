@@ -6,6 +6,7 @@ import { fixCode } from "./commands/fixCode";
 import { generateTests } from "./commands/generateTests";
 import { resetApiKey } from "./config";
 import { AssistantService } from "./services/assistantService";
+import { ContextMemoryService } from "./services/contextMemory";
 import { EditManager } from "./services/editManager";
 import { TerminalRunner } from "./services/terminalRunner";
 import { WorkspaceContextService } from "./services/workspaceContext";
@@ -14,9 +15,10 @@ import { ChatViewProvider } from "./views/ChatViewProvider";
 export function activate(context: vscode.ExtensionContext) {
   console.log("OpenAI VS Code Assistant activated.");
 
-  const workspaceContext = new WorkspaceContextService(context);
-  const editManager = new EditManager(context);
-  const terminalRunner = new TerminalRunner();
+  const memory = new ContextMemoryService(context);
+  const workspaceContext = new WorkspaceContextService(context, memory);
+  const editManager = new EditManager(context, memory);
+  const terminalRunner = new TerminalRunner(memory);
   const assistantService = new AssistantService(context, workspaceContext);
   const chatViewProvider = new ChatViewProvider(
     context,

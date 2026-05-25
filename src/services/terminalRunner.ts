@@ -2,9 +2,12 @@ import * as vscode from "vscode";
 
 import { getEnableTerminalExecution } from "../config";
 import { ProposedCommand } from "../types";
+import { ContextMemoryService } from "./contextMemory";
 
 export class TerminalRunner {
   private pendingCommands: ProposedCommand[] = [];
+
+  constructor(private readonly memory?: ContextMemoryService) {}
 
   setPendingCommands(commands: ProposedCommand[]): void {
     this.pendingCommands = commands;
@@ -40,5 +43,7 @@ export class TerminalRunner {
 
     terminal.show();
     terminal.sendText(command.command);
+
+    await this.memory?.rememberCommand(command.command);
   }
 }

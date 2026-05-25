@@ -5,6 +5,7 @@ import { extractBestCode } from "../services/codeExtraction";
 import { EditManager } from "../services/editManager";
 import { TerminalRunner } from "../services/terminalRunner";
 import { WorkspaceContextService } from "../services/workspaceContext";
+import { ApiUsage } from "../types";
 import { insertTextAtCursor, replaceSelection } from "../utils/editor";
 
 type WebviewMessage = {
@@ -19,6 +20,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private messages: ChatMessage[] = [];
   private lastAssistantResponse = "";
+  private activeAbortController?: AbortController;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -46,6 +48,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         await this.handleAgentRequest(message.text);
       }
 
+      if (message.type === "stop-generation") {
+        this.stopGeneration();
+      }
+
       if (message.type === "insert-last-response") {
         await insertTextAtCursor(extractBestCode(this.lastAssistantResponse));
       }
@@ -59,7 +65,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
 
       if (message.type === "reject-edits") {
-        this.editManager.rejectPendingPlan();
+        await this.editManager.rememberRejectedPlan();
         this.post({ type: "edits-rejected" });
       }
 
@@ -94,13 +100,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleChatMessage(userText: string): Promise<void> {
-    if (!userText.trim()) {
+    if (!userText.trim() || this.activeAbortController) {
       return;
     }
 
+    const abortController = this.startGeneration();
+
     this.messages.push({ role: "user", content: userText });
     this.post({ type: "user", text: userText });
-    this.post({ type: "assistant-start" });
+    this.post({ type: "assistant-start", text: "Thinking..." });
 
     try {
       const assistantResponse = await this.assistantService.streamChat(
@@ -108,24 +116,37 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.messages,
         (chunk) => {
           this.post({ type: "assistant-chunk", text: chunk });
+        },
+        {
+          signal: abortController.signal,
+          onUsage: (usage) => this.postUsage(usage),
         }
       );
 
       this.messages.push({ role: "assistant", content: assistantResponse });
       this.lastAssistantResponse = assistantResponse;
+      this.post({ type: "assistant-complete" });
     } catch (error) {
-      this.postError(error);
+      if (isAbortError(error)) {
+        this.post({ type: "generation-stopped" });
+      } else {
+        this.postError(error);
+      }
+    } finally {
+      this.finishGeneration(abortController);
     }
   }
 
   private async handleAgentRequest(userText: string): Promise<void> {
-    if (!userText.trim()) {
+    if (!userText.trim() || this.activeAbortController) {
       return;
     }
 
+    const abortController = this.startGeneration();
+
     this.messages.push({ role: "user", content: `[Agent] ${userText}` });
     this.post({ type: "user", text: `[Agent] ${userText}` });
-    this.post({ type: "assistant-start" });
+    this.post({ type: "assistant-start", text: "Planning edits..." });
 
     try {
       const result = await this.assistantService.runAgent(
@@ -133,6 +154,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.messages,
         (chunk) => {
           this.post({ type: "assistant-chunk", text: chunk });
+        },
+        {
+          signal: abortController.signal,
+          onUsage: (usage) => this.postUsage(usage),
         }
       );
 
@@ -144,6 +169,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
 
       this.terminalRunner.setPendingCommands(result.plan.commands);
+      this.post({ type: "assistant-complete" });
       this.post({
         type: "proposed-edits",
         text: formatPlanSummary(result.plan.summary, result.plan.edits.length),
@@ -153,7 +179,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         text: formatCommandSummary(result.plan.commands),
       });
     } catch (error) {
-      this.postError(error);
+      if (isAbortError(error)) {
+        this.post({ type: "generation-stopped" });
+      } else {
+        this.postError(error);
+      }
+    } finally {
+      this.finishGeneration(abortController);
     }
   }
 
@@ -172,6 +204,33 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private startGeneration(): AbortController {
+    const abortController = new AbortController();
+    this.activeAbortController = abortController;
+    this.post({ type: "loading-start" });
+
+    return abortController;
+  }
+
+  private finishGeneration(abortController: AbortController): void {
+    if (this.activeAbortController === abortController) {
+      this.activeAbortController = undefined;
+    }
+
+    this.post({ type: "loading-stop" });
+  }
+
+  private stopGeneration(): void {
+    this.activeAbortController?.abort();
+  }
+
+  private postUsage(usage: ApiUsage): void {
+    this.post({
+      type: "usage",
+      text: formatUsage(usage),
+    });
+  }
+
   private post(message: Record<string, unknown>): void {
     this.view?.webview.postMessage(message);
   }
@@ -179,7 +238,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private postError(error: unknown): void {
     this.post({
       type: "assistant-error",
-      text: error instanceof Error ? error.message : "Unknown error",
+      text: formatError(error),
     });
   }
 
@@ -226,20 +285,35 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           flex-direction: column;
           gap: 4px;
         }
+        .label-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
         .label {
           font-size: 11px;
           font-weight: 700;
           opacity: 0.75;
         }
+        .copy-button {
+          display: none;
+          padding: 3px 7px;
+          font-size: 11px;
+          line-height: 1.3;
+        }
+        .assistant .copy-button {
+          display: inline-block;
+        }
         .bubble {
           padding: 10px 12px;
           border-radius: 8px;
           line-height: 1.45;
-          white-space: pre-wrap;
           word-wrap: break-word;
           font-size: 13px;
         }
         .user .bubble {
+          white-space: pre-wrap;
           background: var(--vscode-button-background);
           color: var(--vscode-button-foreground);
           align-self: flex-end;
@@ -253,10 +327,58 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           align-self: flex-start;
           max-width: 96%;
         }
+        .bubble h1,
+        .bubble h2,
+        .bubble h3 {
+          margin: 8px 0 6px;
+          line-height: 1.25;
+        }
+        .bubble h1 { font-size: 18px; }
+        .bubble h2 { font-size: 16px; }
+        .bubble h3 { font-size: 14px; }
+        .bubble p {
+          margin: 0 0 8px;
+        }
+        .bubble ul,
+        .bubble ol {
+          margin: 0 0 8px 18px;
+          padding: 0;
+        }
+        .bubble pre {
+          overflow-x: auto;
+          padding: 10px;
+          border-radius: 6px;
+          background: var(--vscode-textCodeBlock-background);
+          border: 1px solid var(--vscode-panel-border);
+        }
+        .bubble code {
+          font-family: var(--vscode-editor-font-family);
+          font-size: var(--vscode-editor-font-size);
+        }
+        .bubble :not(pre) > code {
+          padding: 1px 4px;
+          border-radius: 4px;
+          background: var(--vscode-textCodeBlock-background);
+        }
+        .bubble blockquote {
+          margin: 0 0 8px;
+          padding-left: 10px;
+          border-left: 3px solid var(--vscode-panel-border);
+          opacity: 0.85;
+        }
         .composer {
           padding: 12px;
           border-top: 1px solid var(--vscode-panel-border);
           background: var(--vscode-sideBar-background);
+        }
+        .loading {
+          display: none;
+          margin-bottom: 8px;
+          font-size: 12px;
+          opacity: 0.8;
+        }
+        .loading.visible {
+          display: block;
         }
         textarea {
           width: 100%;
@@ -293,15 +415,25 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           font-weight: 600;
           font-size: 12px;
         }
-        button:hover {
+        button:disabled {
+          cursor: not-allowed;
+          opacity: 0.55;
+        }
+        button:hover:not(:disabled) {
           background: var(--vscode-button-hoverBackground);
         }
         button.secondary {
           background: var(--vscode-button-secondaryBackground);
           color: var(--vscode-button-secondaryForeground);
         }
-        button.secondary:hover {
+        button.secondary:hover:not(:disabled) {
           background: var(--vscode-button-secondaryHoverBackground);
+        }
+        #stopButton {
+          display: none;
+        }
+        #stopButton.visible {
+          display: block;
         }
         .hint {
           margin-top: 8px;
@@ -321,36 +453,44 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
         <div id="messages">
           <div class="message assistant">
-            <div class="label">Assistant</div>
+            <div class="label-row">
+              <div class="label">Assistant</div>
+              <button class="secondary copy-button">Copy</button>
+            </div>
             <div class="bubble">Ready. Highlight code or ask a question.</div>
           </div>
         </div>
 
         <div class="composer">
+          <div id="loading" class="loading">Thinking...</div>
           <textarea id="prompt" placeholder="Ask a coding question..."></textarea>
 
           <div class="quick-actions">
-            <button onclick="quickAsk('Explain the selected code clearly.')">Explain</button>
-            <button onclick="quickAsk('Find and fix bugs in the selected code.')">Fix</button>
-            <button onclick="quickAsk('Generate tests for the selected code.')">Tests</button>
+            <button data-busy-control onclick="quickAsk('Explain the selected code clearly.')">Explain</button>
+            <button data-busy-control onclick="quickAsk('Find and fix bugs in the selected code.')">Fix</button>
+            <button data-busy-control onclick="quickAsk('Generate tests for the selected code.')">Tests</button>
           </div>
 
           <div class="actions">
-            <button onclick="sendMessage()">Send</button>
-            <button onclick="sendAgent()">Agent</button>
-            <button class="secondary" onclick="indexWorkspace()">Index</button>
+            <button data-busy-control onclick="sendMessage()">Send</button>
+            <button data-busy-control onclick="sendAgent()">Agent</button>
+            <button class="secondary" data-busy-control onclick="indexWorkspace()">Index</button>
           </div>
 
           <div class="actions">
-            <button class="secondary" onclick="insertLastResponse()">Insert</button>
-            <button class="secondary" onclick="replaceSelection()">Replace</button>
+            <button class="secondary" data-busy-control onclick="insertLastResponse()">Insert</button>
+            <button class="secondary" data-busy-control onclick="replaceSelection()">Replace</button>
             <button class="secondary" onclick="clearChat()">Clear</button>
           </div>
 
           <div class="actions">
-            <button class="secondary" onclick="acceptEdits()">Accept</button>
-            <button class="secondary" onclick="rejectEdits()">Reject</button>
-            <button class="secondary" onclick="runCommand()">Run Cmd</button>
+            <button class="secondary" data-busy-control onclick="acceptEdits()">Accept</button>
+            <button class="secondary" data-busy-control onclick="rejectEdits()">Reject</button>
+            <button class="secondary" data-busy-control onclick="runCommand()">Run Cmd</button>
+          </div>
+
+          <div class="actions">
+            <button id="stopButton" class="secondary" onclick="stopGeneration()">Stop</button>
           </div>
 
           <div class="hint">Enter to send · Shift + Enter for new line</div>
@@ -360,21 +500,38 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       <script>
         const vscode = acquireVsCodeApi();
         const messages = document.getElementById("messages");
+        const loading = document.getElementById("loading");
+        const stopButton = document.getElementById("stopButton");
+        const busyControls = Array.from(document.querySelectorAll("[data-busy-control]"));
         let currentAssistantBubble = null;
+        let currentAssistantRaw = "";
 
         function appendMessage(role, text) {
           const wrapper = document.createElement("div");
           wrapper.className = "message " + role;
 
+          const labelRow = document.createElement("div");
+          labelRow.className = "label-row";
+
           const label = document.createElement("div");
           label.className = "label";
           label.textContent = role === "user" ? "You" : role === "status" ? "Status" : "Assistant";
+          labelRow.appendChild(label);
+
+          if (role === "assistant") {
+            const copyButton = document.createElement("button");
+            copyButton.className = "secondary copy-button";
+            copyButton.textContent = "Copy";
+            copyButton.addEventListener("click", () => copyText(wrapper.dataset.raw || ""));
+            labelRow.appendChild(copyButton);
+          }
 
           const bubble = document.createElement("div");
           bubble.className = "bubble";
-          bubble.textContent = text;
+          setBubbleContent(bubble, role, text);
 
-          wrapper.appendChild(label);
+          wrapper.dataset.raw = text;
+          wrapper.appendChild(labelRow);
           wrapper.appendChild(bubble);
           messages.appendChild(wrapper);
           messages.scrollTop = messages.scrollHeight;
@@ -382,11 +539,51 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           return bubble;
         }
 
+        function setBubbleContent(bubble, role, text) {
+          if (role === "assistant" || role === "status") {
+            bubble.innerHTML = renderMarkdown(text);
+          } else {
+            bubble.textContent = text;
+          }
+        }
+
+        function updateAssistantBubble(text) {
+          if (!currentAssistantBubble) return;
+          const wrapper = currentAssistantBubble.closest(".message");
+          if (wrapper) {
+            wrapper.dataset.raw = text;
+          }
+          currentAssistantBubble.innerHTML = renderMarkdown(text || "Thinking...");
+          messages.scrollTop = messages.scrollHeight;
+        }
+
+        async function copyText(text) {
+          try {
+            await navigator.clipboard.writeText(text);
+          } catch {
+            const fallback = document.createElement("textarea");
+            fallback.value = text;
+            document.body.appendChild(fallback);
+            fallback.select();
+            document.execCommand("copy");
+            fallback.remove();
+          }
+        }
+
         function promptText() {
           const input = document.getElementById("prompt");
           const text = input.value.trim();
           input.value = "";
           return text;
+        }
+
+        function setBusy(isBusy, text) {
+          loading.textContent = text || "Thinking...";
+          loading.classList.toggle("visible", isBusy);
+          stopButton.classList.toggle("visible", isBusy);
+          busyControls.forEach((control) => {
+            control.disabled = isBusy;
+          });
         }
 
         function quickAsk(text) {
@@ -403,6 +600,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           const text = promptText();
           if (!text) return;
           vscode.postMessage({ type: "agent-request", text });
+        }
+
+        function stopGeneration() {
+          vscode.postMessage({ type: "stop-generation" });
         }
 
         function insertLastResponse() {
@@ -432,6 +633,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         function clearChat() {
           messages.innerHTML = "";
           currentAssistantBubble = null;
+          currentAssistantRaw = "";
           appendMessage("assistant", "Chat cleared. Highlight code or ask a new question.");
           vscode.postMessage({ type: "clear-chat" });
         }
@@ -439,19 +641,34 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         window.addEventListener("message", event => {
           const message = event.data;
 
+          if (message.type === "loading-start") {
+            setBusy(true, "Thinking...");
+          }
+
+          if (message.type === "loading-stop") {
+            setBusy(false);
+          }
+
           if (message.type === "user") {
             appendMessage("user", message.text);
           }
 
           if (message.type === "assistant-start") {
-            currentAssistantBubble = appendMessage("assistant", "");
+            currentAssistantRaw = "";
+            currentAssistantBubble = appendMessage("assistant", message.text || "Thinking...");
           }
 
           if (message.type === "assistant-chunk") {
-            if (currentAssistantBubble) {
-              currentAssistantBubble.textContent += message.text;
-              messages.scrollTop = messages.scrollHeight;
-            }
+            currentAssistantRaw += message.text;
+            updateAssistantBubble(currentAssistantRaw);
+          }
+
+          if (message.type === "assistant-complete") {
+            updateAssistantBubble(currentAssistantRaw);
+          }
+
+          if (message.type === "generation-stopped") {
+            appendMessage("status", "Generation stopped.");
           }
 
           if (message.type === "assistant-error") {
@@ -462,7 +679,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             message.type === "proposed-edits" ||
             message.type === "proposed-command" ||
             message.type === "index-status" ||
-            message.type === "edits-rejected"
+            message.type === "edits-rejected" ||
+            message.type === "usage"
           ) {
             appendMessage("status", message.text || "Done.");
           }
@@ -474,6 +692,105 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             sendMessage();
           }
         });
+
+        function renderMarkdown(markdown) {
+          const blocks = [];
+          let rest = markdown || "";
+          let index = 0;
+
+          rest = rest.replace(new RegExp("\\x60\\x60\\x60([a-zA-Z0-9_-]*)\\\\n([\\\\s\\\\S]*?)\\x60\\x60\\x60", "g"), (_, language, code) => {
+            const token = "%%CODEBLOCK_" + index + "%%";
+            blocks.push("<pre><code" + (language ? " data-language=\\"" + escapeHtml(language) + "\\"" : "") + ">" + escapeHtml(code.trim()) + "</code></pre>");
+            index += 1;
+            return "\\n" + token + "\\n";
+          });
+
+          const lines = rest.split(/\\n/);
+          const html = [];
+          let listMode = null;
+
+          function closeList() {
+            if (listMode) {
+              html.push("</" + listMode + ">");
+              listMode = null;
+            }
+          }
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+
+            if (!trimmed) {
+              closeList();
+              continue;
+            }
+
+            const codeMatch = trimmed.match(/^%%CODEBLOCK_(\\d+)%%$/);
+            if (codeMatch) {
+              closeList();
+              html.push(blocks[Number(codeMatch[1])] || "");
+              continue;
+            }
+
+            const heading = trimmed.match(/^(#{1,3})\\s+(.+)$/);
+            if (heading) {
+              closeList();
+              const level = heading[1].length;
+              html.push("<h" + level + ">" + renderInline(heading[2]) + "</h" + level + ">");
+              continue;
+            }
+
+            if (/^>\\s+/.test(trimmed)) {
+              closeList();
+              html.push("<blockquote>" + renderInline(trimmed.replace(/^>\\s+/, "")) + "</blockquote>");
+              continue;
+            }
+
+            const unordered = trimmed.match(/^[-*]\\s+(.+)$/);
+            if (unordered) {
+              if (listMode !== "ul") {
+                closeList();
+                html.push("<ul>");
+                listMode = "ul";
+              }
+              html.push("<li>" + renderInline(unordered[1]) + "</li>");
+              continue;
+            }
+
+            const ordered = trimmed.match(/^\\d+\\.\\s+(.+)$/);
+            if (ordered) {
+              if (listMode !== "ol") {
+                closeList();
+                html.push("<ol>");
+                listMode = "ol";
+              }
+              html.push("<li>" + renderInline(ordered[1]) + "</li>");
+              continue;
+            }
+
+            closeList();
+            html.push("<p>" + renderInline(trimmed) + "</p>");
+          }
+
+          closeList();
+          return html.join("");
+        }
+
+        function renderInline(text) {
+          return escapeHtml(text)
+            .replace(new RegExp("\`([^\`]+)\`", "g"), "<code>$1</code>")
+            .replace(/\\*\\*([^*]+)\\*\\*/g, "<strong>$1</strong>")
+            .replace(/\\*([^*]+)\\*/g, "<em>$1</em>")
+            .replace(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g, '<a href="$2">$1</a>');
+        }
+
+        function escapeHtml(text) {
+          return String(text)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+        }
       </script>
     </body>
     </html>
@@ -500,4 +817,28 @@ function formatCommandSummary(commands: { command: string; reason?: string }[]):
       return `${index + 1}. ${command.command}${reason}`;
     })
     .join("\n");
+}
+
+function formatUsage(usage: ApiUsage): string {
+  const cost =
+    usage.estimatedCostUsd > 0
+      ? ` · est. $${usage.estimatedCostUsd.toFixed(6)}`
+      : "";
+
+  return `Usage: ${usage.model} · ${usage.inputTokens} input tokens · ${usage.outputTokens} output tokens · ${usage.totalTokens} total${cost}`;
+}
+
+function formatError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === "AbortError" || /aborted|abort/i.test(error.message))
+  );
 }

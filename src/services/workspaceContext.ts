@@ -8,6 +8,7 @@ import {
 } from "../config";
 import { getEditorContext } from "../utils/editor";
 import { IndexEntry, RelatedFile, WorkspaceContext } from "../types";
+import { ContextMemoryService } from "./contextMemory";
 
 const INDEX_KEY = "openaiAssistant.repoIndex";
 const EXCLUDE_PATTERN = "{**/node_modules/**,**/out/**,**/dist/**,**/build/**,**/.git/**,**/.vscode-test/**,**/coverage/**}";
@@ -15,7 +16,10 @@ const EXCLUDE_PATTERN = "{**/node_modules/**,**/out/**,**/dist/**,**/build/**,**
 export class WorkspaceContextService {
   private index = new Map<string, IndexEntry>();
 
-  constructor(private readonly context: vscode.ExtensionContext) {
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly memory: ContextMemoryService
+  ) {
     const cached = this.context.workspaceState.get<IndexEntry[]>(INDEX_KEY, []);
 
     for (const entry of cached) {
@@ -67,6 +71,9 @@ export class WorkspaceContextService {
     }
 
     const relatedFiles = await this.discoverRelatedFiles(userText, activeFile);
+    const agentInstructions = await this.memory.getAgentInstructions();
+    const ideContext = await this.memory.getIdeContext();
+    const memories = this.memory.getMemories();
 
     return {
       activeFile,
@@ -75,6 +82,9 @@ export class WorkspaceContextService {
       activeFileText,
       relatedFiles,
       workspaceFolders,
+      agentInstructions,
+      ideContext,
+      memories,
     };
   }
 

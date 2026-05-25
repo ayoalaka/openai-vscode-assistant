@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 
 import { askOpenAI, AssistantTaskType } from "../openaiClient";
 import { SYSTEM_PROMPTS } from "../prompts";
-import { AgentPlan, WorkspaceContext } from "../types";
+import { AgentPlan, ApiUsage, WorkspaceContext } from "../types";
 import { parseAgentPlan } from "./codeExtraction";
 import { detectTestCommands } from "./testCommands";
 import { WorkspaceContextService } from "./workspaceContext";
@@ -21,7 +21,11 @@ export class AssistantService {
   async streamChat(
     userText: string,
     messages: ChatMessage[],
-    onChunk: (chunk: string) => void
+    onChunk: (chunk: string) => void,
+    options: {
+      signal?: AbortSignal;
+      onUsage?: (usage: ApiUsage) => void;
+    } = {}
   ): Promise<string> {
     const workspaceContext = await this.workspaceContext.buildWorkspaceContext(
       userText
@@ -33,14 +37,19 @@ export class AssistantService {
       prompt,
       SYSTEM_PROMPTS.codingAssistant,
       onChunk,
-      detectTaskType(userText)
+      detectTaskType(userText),
+      options
     );
   }
 
   async runAgent(
     userText: string,
     messages: ChatMessage[],
-    onChunk: (chunk: string) => void
+    onChunk: (chunk: string) => void,
+    options: {
+      signal?: AbortSignal;
+      onUsage?: (usage: ApiUsage) => void;
+    } = {}
   ): Promise<{ rawResponse: string; plan: AgentPlan }> {
     const workspaceContext = await this.workspaceContext.buildWorkspaceContext(
       userText
@@ -57,7 +66,8 @@ export class AssistantService {
       prompt,
       SYSTEM_PROMPTS.agentMode,
       onChunk,
-      "agent"
+      "agent",
+      options
     );
     const plan = parseAgentPlan(rawResponse);
 
@@ -197,10 +207,48 @@ ${file.content}
 `;
     })
     .join("\n");
+  const agentInstructions = context.agentInstructions
+    .map((instruction) => {
+      return `
+Agent instruction file: ${instruction.path}
+\`\`\`md
+${instruction.content}
+\`\`\`
+`;
+    })
+    .join("\n");
+  const diagnostics = context.ideContext.diagnostics
+    .map((diagnostic) => {
+      return `${diagnostic.severity.toUpperCase()} ${diagnostic.filePath}:${diagnostic.line} ${diagnostic.message}`;
+    })
+    .join("\n");
+  const memories = context.memories
+    .map((memory) => {
+      return `${new Date(memory.timestamp).toISOString()} ${memory.kind}: ${memory.summary}`;
+    })
+    .join("\n");
 
   return `
 Workspace folders:
 ${context.workspaceFolders.join("\n") || "None"}
+
+Agent/project instructions:
+${agentInstructions || "None"}
+
+IDE context:
+Open files:
+${context.ideContext.openFiles.join("\n") || "None"}
+
+Diagnostics:
+${diagnostics || "None"}
+
+Git diff:
+\`\`\`diff
+${context.ideContext.gitDiff || "None"}
+\`\`\`
+
+Learned memory:
+${memories || "None"}
 
 ${activeFile}
 

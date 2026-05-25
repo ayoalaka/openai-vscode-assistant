@@ -69,4 +69,23 @@ describe("code extraction", () => {
     assert.equal(plan.edits.length, 1);
     assert.equal(plan.commands[0].command, "npm test");
   });
+
+  it("parses an agent plan with only commands", () => {
+    const plan = parseAgentPlan(
+      JSON.stringify({
+        summary: "List files in the current directory.",
+        commands: [
+          {
+            command: "ls -la",
+            cwd: ".",
+            reason: "Show hidden files and directories.",
+          },
+        ],
+      })
+    );
+
+    assert.equal(plan.summary, "List files in the current directory.");
+    assert.equal(plan.edits.length, 0);
+    assert.equal(plan.commands[0].command, "ls -la");
+  });
 });

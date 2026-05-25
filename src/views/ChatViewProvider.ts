@@ -5,7 +5,7 @@ import { extractBestCode } from "../services/codeExtraction";
 import { EditManager } from "../services/editManager";
 import { TerminalRunner } from "../services/terminalRunner";
 import { WorkspaceContextService } from "../services/workspaceContext";
-import { ApiUsage } from "../types";
+import { AgentPlan, ApiUsage } from "../types";
 import { insertTextAtCursor, replaceSelection } from "../utils/editor";
 
 type WebviewMessage = {
@@ -152,9 +152,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       const result = await this.assistantService.runAgent(
         userText,
         this.messages,
-        (chunk) => {
-          this.post({ type: "assistant-chunk", text: chunk });
-        },
+        () => {},
         {
           signal: abortController.signal,
           onUsage: (usage) => this.postUsage(usage),
@@ -169,7 +167,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
 
       this.terminalRunner.setPendingCommands(result.plan.commands);
-      this.post({ type: "assistant-complete" });
+      this.post({
+        type: "assistant-replace",
+        text: formatAgentPlanMessage(result.plan),
+      });
       this.post({
         type: "proposed-edits",
         text: formatPlanSummary(result.plan.summary, result.plan.edits.length),
@@ -821,6 +822,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             updateAssistantBubble(currentAssistantRaw);
           }
 
+          if (message.type === "assistant-replace") {
+            currentAssistantRaw = message.text || "";
+            updateAssistantBubble(currentAssistantRaw);
+          }
+
           if (message.type === "generation-stopped") {
             appendMessage("status", "Generation stopped.");
           }
@@ -971,6 +977,44 @@ function formatCommandSummary(commands: { command: string; reason?: string }[]):
       return `${index + 1}. ${command.command}${reason}`;
     })
     .join("\n");
+}
+
+function formatAgentPlanMessage(plan: AgentPlan): string {
+  const parts = [`## Plan\n\n${plan.summary}`];
+
+  if (plan.edits.length > 0) {
+    const editList = plan.edits
+      .map((edit) => {
+        const description = edit.description ? ` - ${edit.description}` : "";
+
+        return `- \`${edit.filePath}\`${description}`;
+      })
+      .join("\n");
+
+    parts.push(`### Proposed edits\n${editList}`);
+  }
+
+  if (plan.commands.length > 0) {
+    const commandList = plan.commands
+      .map((command) => {
+        const reason = command.reason ? ` - ${command.reason}` : "";
+
+        return `- \`${command.command}\`${reason}`;
+      })
+      .join("\n");
+
+    parts.push(`### Commands to approve\n${commandList}`);
+  }
+
+  if (plan.edits.length > 0 || plan.commands.length > 0) {
+    parts.push("Review the proposed diff or command, then choose **Accept**, **Reject**, or **Run Cmd**.");
+  }
+
+  if (plan.edits.length === 0 && plan.commands.length === 0) {
+    parts.push("I did not find any edits or commands to propose.");
+  }
+
+  return parts.join("\n\n");
 }
 
 function formatUsage(usage: ApiUsage): string {

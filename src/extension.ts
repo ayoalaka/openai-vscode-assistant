@@ -5,13 +5,26 @@ import { explainCode } from "./commands/explainCode";
 import { fixCode } from "./commands/fixCode";
 import { generateTests } from "./commands/generateTests";
 import { resetApiKey } from "./config";
-import { ChatPanel } from "./panels/ChatPanel";
+import { AssistantService } from "./services/assistantService";
+import { EditManager } from "./services/editManager";
+import { TerminalRunner } from "./services/terminalRunner";
+import { WorkspaceContextService } from "./services/workspaceContext";
 import { ChatViewProvider } from "./views/ChatViewProvider";
 
 export function activate(context: vscode.ExtensionContext) {
   console.log("OpenAI VS Code Assistant activated.");
 
-  const chatViewProvider = new ChatViewProvider(context);
+  const workspaceContext = new WorkspaceContextService(context);
+  const editManager = new EditManager(context);
+  const terminalRunner = new TerminalRunner();
+  const assistantService = new AssistantService(context, workspaceContext);
+  const chatViewProvider = new ChatViewProvider(
+    context,
+    assistantService,
+    workspaceContext,
+    editManager,
+    terminalRunner
+  );
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
@@ -42,7 +55,34 @@ export function activate(context: vscode.ExtensionContext) {
     }),
 
     vscode.commands.registerCommand("openaiAssistant.openChat", () => {
-      ChatPanel.createOrShow(context);
+      vscode.commands.executeCommand("openaiAssistant.chatView.focus");
+    }),
+
+    vscode.commands.registerCommand("openaiAssistant.agentMode", async () => {
+      await chatViewProvider.promptAgentMode();
+    }),
+
+    vscode.commands.registerCommand("openaiAssistant.acceptEdits", async () => {
+      await editManager.acceptPendingPlan();
+    }),
+
+    vscode.commands.registerCommand("openaiAssistant.rejectEdits", () => {
+      editManager.rejectPendingPlan();
+    }),
+
+    vscode.commands.registerCommand(
+      "openaiAssistant.runApprovedCommand",
+      async () => {
+        await terminalRunner.runCommand();
+      }
+    ),
+
+    vscode.commands.registerCommand("openaiAssistant.indexWorkspace", async () => {
+      const entries = await workspaceContext.indexWorkspace();
+
+      vscode.window.showInformationMessage(
+        `Indexed ${entries.length} workspace file(s).`
+      );
     }),
   ];
 

@@ -54,3 +54,27 @@ export function getAdvancedModel(): string {
     .getConfiguration("openaiAssistant")
     .get<string>("advancedModel", "gpt-4.1");
 }
+
+export function getEnableRepoIndexing(): boolean {
+  return vscode.workspace
+    .getConfiguration("openaiAssistant")
+    .get<boolean>("enableRepoIndexing", true);
+}
+
+export function getMaxContextFiles(): number {
+  return vscode.workspace
+    .getConfiguration("openaiAssistant")
+    .get<number>("maxContextFiles", 8);
+}
+
+export function getMaxFileBytes(): number {
+  return vscode.workspace
+    .getConfiguration("openaiAssistant")
+    .get<number>("maxFileBytes", 20000);
+}
+
+export function getEnableTerminalExecution(): boolean {
+  return vscode.workspace
+    .getConfiguration("openaiAssistant")
+    .get<boolean>("enableTerminalExecution", true);
+}

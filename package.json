@@ -17,7 +17,12 @@
     "onCommand:openaiAssistant.fixCode",
     "onCommand:openaiAssistant.generateTests",
     "onCommand:openaiAssistant.resetApiKey",
-    "onCommand:openaiAssistant.openChat"
+    "onCommand:openaiAssistant.openChat",
+    "onCommand:openaiAssistant.agentMode",
+    "onCommand:openaiAssistant.acceptEdits",
+    "onCommand:openaiAssistant.rejectEdits",
+    "onCommand:openaiAssistant.runApprovedCommand",
+    "onCommand:openaiAssistant.indexWorkspace"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -63,6 +68,26 @@
       {
         "command": "openaiAssistant.generateTests",
         "title": "OpenAI Assistant: Generate Tests"
+      },
+      {
+        "command": "openaiAssistant.agentMode",
+        "title": "OpenAI Assistant: Agent Mode"
+      },
+      {
+        "command": "openaiAssistant.acceptEdits",
+        "title": "OpenAI Assistant: Accept Proposed Edits"
+      },
+      {
+        "command": "openaiAssistant.rejectEdits",
+        "title": "OpenAI Assistant: Reject Proposed Edits"
+      },
+      {
+        "command": "openaiAssistant.runApprovedCommand",
+        "title": "OpenAI Assistant: Run Approved Command"
+      },
+      {
+        "command": "openaiAssistant.indexWorkspace",
+        "title": "OpenAI Assistant: Index Workspace"
       }
     ],
     "configuration": {
@@ -82,6 +107,26 @@
           "type": "number",
           "default": 1200,
           "description": "Maximum output tokens for assistant responses."
+        },
+        "openaiAssistant.enableRepoIndexing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable lightweight workspace indexing for assistant context."
+        },
+        "openaiAssistant.maxContextFiles": {
+          "type": "number",
+          "default": 8,
+          "description": "Maximum number of related workspace files to include in assistant context."
+        },
+        "openaiAssistant.maxFileBytes": {
+          "type": "number",
+          "default": 20000,
+          "description": "Maximum bytes to read from a single file for assistant context."
+        },
+        "openaiAssistant.enableTerminalExecution": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow approved assistant terminal commands to run in a VS Code terminal."
         }
       }
     }
@@ -89,7 +134,8 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node out/test/codeExtraction.test.js"
   },
   "dependencies": {
     "openai": "^4.104.0"

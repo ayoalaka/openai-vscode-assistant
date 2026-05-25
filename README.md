@@ -20,6 +20,11 @@ Features include:
 - Code selection awareness
 - Insert generated responses into editor
 - Replace selected code with generated fixes
+- Smart code extraction for Insert/Replace
+- Agent mode with approved multi-file edits
+- Inline diff review with Accept/Reject controls
+- Workspace indexing and related file context
+- Approved terminal and test command execution
 
 ---
 
@@ -30,6 +35,8 @@ Built-in quick actions for common workflows:
 - **Explain Code**
 - **Fix Bugs**
 - **Generate Tests**
+- **Agent Mode**
+- **Index Workspace**
 
 The assistant automatically uses selected code when available.
 
@@ -43,6 +50,9 @@ The assistant can understand:
 - Current file
 - File language
 - Editor context
+- Workspace folders
+- Open files
+- Related files discovered from workspace search and indexing
 
 Supported examples:
 
@@ -70,11 +80,16 @@ openai-vscode-assistant/
 │   │   ├── fixCode.ts
 │   │   └── generateTests.ts
 │   │
-│   ├── panels/
-│   │   └── ChatPanel.ts
-│   │
 │   ├── views/
 │   │   └── ChatViewProvider.ts
+│   │
+│   ├── services/
+│   │   ├── assistantService.ts
+│   │   ├── codeExtraction.ts
+│   │   ├── editManager.ts
+│   │   ├── terminalRunner.ts
+│   │   ├── testCommands.ts
+│   │   └── workspaceContext.ts
 │   │
 │   ├── utils/
 │   │   ├── editor.ts
@@ -201,6 +216,27 @@ Used for debugging, refactoring, and harder reasoning.
 ```json
 "openaiAssistant.maxOutputTokens": 1200
 ```
+
+### Workspace Indexing
+
+```json
+"openaiAssistant.enableRepoIndexing": true
+```
+
+### Context Limits
+
+```json
+"openaiAssistant.maxContextFiles": 8,
+"openaiAssistant.maxFileBytes": 20000
+```
+
+### Terminal Execution
+
+```json
+"openaiAssistant.enableTerminalExecution": true
+```
+
+Terminal commands are only run after explicit approval.
 
 ---
 

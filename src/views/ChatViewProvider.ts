@@ -248,7 +248,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     <html>
     <head>
       <style>
-        * { box-sizing: border-box; }
+        * {
+          box-sizing: border-box;
+        }
+
+        :root {
+          color-scheme: light dark;
+        }
+
         body {
           margin: 0;
           font-family: var(--vscode-font-family);
@@ -260,90 +267,171 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           display: flex;
           flex-direction: column;
         }
+
         .header {
-          padding: 14px 16px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 9px 10px;
           border-bottom: 1px solid var(--vscode-panel-border);
           background: var(--vscode-sideBar-background);
         }
+
+        .brand {
+          min-width: 0;
+        }
+
         .title {
-          font-size: 14px;
-          font-weight: 700;
+          font-size: 12px;
+          font-weight: 600;
+          line-height: 1.2;
         }
+
         .subtitle {
-          margin-top: 4px;
           font-size: 11px;
-          opacity: 0.7;
+          color: var(--vscode-descriptionForeground);
+          line-height: 1.2;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
+
+        .top-actions {
+          display: flex;
+          gap: 4px;
+          flex: 0 0 auto;
+        }
+
         #messages {
           flex: 1;
           overflow-y: auto;
-          padding: 14px;
+          padding: 10px 10px 14px;
         }
+
         .message {
-          margin-bottom: 14px;
+          margin: 0 0 18px;
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 6px;
         }
+
+        .message.user {
+          align-items: flex-end;
+        }
+
+        .message.assistant,
+        .message.status {
+          align-items: stretch;
+        }
+
         .label-row {
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 8px;
+          min-height: 18px;
         }
+
         .label {
           font-size: 11px;
-          font-weight: 700;
-          opacity: 0.75;
+          font-weight: 600;
+          color: var(--vscode-descriptionForeground);
         }
+
         .copy-button {
           display: none;
-          padding: 3px 7px;
+          padding: 2px 6px;
           font-size: 11px;
           line-height: 1.3;
+          background: transparent;
+          color: var(--vscode-descriptionForeground);
+          border: 1px solid transparent;
         }
+
+        .message:hover .copy-button {
+          border-color: var(--vscode-panel-border);
+        }
+
         .assistant .copy-button {
           display: inline-block;
         }
+
         .bubble {
-          padding: 10px 12px;
-          border-radius: 8px;
           line-height: 1.45;
           word-wrap: break-word;
           font-size: 13px;
         }
+
         .user .bubble {
           white-space: pre-wrap;
-          background: var(--vscode-button-background);
-          color: var(--vscode-button-foreground);
-          align-self: flex-end;
-          max-width: 92%;
-        }
-        .assistant .bubble,
-        .status .bubble {
+          max-width: min(92%, 520px);
+          padding: 8px 10px;
+          border-radius: 8px;
+          color: var(--vscode-input-foreground);
           background: var(--vscode-input-background);
           border: 1px solid var(--vscode-panel-border);
-          color: var(--vscode-foreground);
-          align-self: flex-start;
-          max-width: 96%;
         }
+
+        .assistant .bubble,
+        .status .bubble {
+          color: var(--vscode-foreground);
+          max-width: 100%;
+        }
+
+        .status {
+          margin-bottom: 10px;
+        }
+
+        .status .label-row {
+          display: none;
+        }
+
+        .status .bubble {
+          padding: 7px 9px;
+          border-radius: 6px;
+          border: 1px solid var(--vscode-panel-border);
+          color: var(--vscode-descriptionForeground);
+          background: var(--vscode-sideBar-background);
+          font-size: 12px;
+        }
+
         .bubble h1,
         .bubble h2,
         .bubble h3 {
-          margin: 8px 0 6px;
+          margin: 10px 0 6px;
           line-height: 1.25;
         }
-        .bubble h1 { font-size: 18px; }
-        .bubble h2 { font-size: 16px; }
-        .bubble h3 { font-size: 14px; }
+
+        .bubble h1 {
+          font-size: 18px;
+        }
+
+        .bubble h2 {
+          font-size: 15px;
+        }
+
+        .bubble h3 {
+          font-size: 13px;
+        }
+
         .bubble p {
           margin: 0 0 8px;
         }
+
+        .bubble p:last-child,
+        .bubble ul:last-child,
+        .bubble ol:last-child,
+        .bubble pre:last-child {
+          margin-bottom: 0;
+        }
+
         .bubble ul,
         .bubble ol {
           margin: 0 0 8px 18px;
           padding: 0;
         }
+
         .bubble pre {
           overflow-x: auto;
           padding: 10px;
@@ -351,95 +439,149 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           background: var(--vscode-textCodeBlock-background);
           border: 1px solid var(--vscode-panel-border);
         }
+
         .bubble code {
           font-family: var(--vscode-editor-font-family);
           font-size: var(--vscode-editor-font-size);
         }
+
         .bubble :not(pre) > code {
           padding: 1px 4px;
           border-radius: 4px;
           background: var(--vscode-textCodeBlock-background);
         }
+
         .bubble blockquote {
           margin: 0 0 8px;
           padding-left: 10px;
           border-left: 3px solid var(--vscode-panel-border);
           opacity: 0.85;
         }
+
         .composer {
-          padding: 12px;
+          padding: 10px;
           border-top: 1px solid var(--vscode-panel-border);
           background: var(--vscode-sideBar-background);
         }
+
         .loading {
           display: none;
-          margin-bottom: 8px;
+          margin: 0 0 8px;
           font-size: 12px;
-          opacity: 0.8;
+          color: var(--vscode-descriptionForeground);
         }
+
         .loading.visible {
           display: block;
         }
+
+        .composer-box {
+          border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+          border-radius: 8px;
+          background: var(--vscode-input-background);
+          overflow: hidden;
+        }
+
         textarea {
           width: 100%;
-          min-height: 78px;
-          max-height: 180px;
-          resize: vertical;
+          min-height: 84px;
+          max-height: 220px;
+          resize: none;
           color: var(--vscode-input-foreground);
-          background: var(--vscode-input-background);
-          border: 1px solid var(--vscode-input-border);
-          border-radius: 8px;
-          padding: 10px;
+          background: transparent;
+          border: 0;
+          padding: 10px 10px 6px;
           outline: none;
           font-family: var(--vscode-font-family);
           font-size: 13px;
         }
-        textarea:focus {
+
+        .composer-box:focus-within {
           border-color: var(--vscode-focusBorder);
         }
-        .quick-actions,
-        .actions {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
+
+        .composer-toolbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
           gap: 8px;
-          margin-top: 8px;
+          padding: 6px;
+          border-top: 1px solid var(--vscode-panel-border);
         }
+
+        .composer-footer {
+          padding: 6px 0 0;
+          border-top: 0;
+        }
+
+        .toolbar-group {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          min-width: 0;
+          flex-wrap: wrap;
+        }
+
         button {
           min-width: 0;
-          padding: 8px;
+          padding: 5px 8px;
           cursor: pointer;
           color: var(--vscode-button-foreground);
           background: var(--vscode-button-background);
           border: none;
-          border-radius: 7px;
-          font-weight: 600;
+          border-radius: 5px;
+          font-weight: 500;
           font-size: 12px;
+          line-height: 1.3;
         }
+
         button:disabled {
           cursor: not-allowed;
           opacity: 0.55;
         }
+
         button:hover:not(:disabled) {
           background: var(--vscode-button-hoverBackground);
         }
+
         button.secondary {
           background: var(--vscode-button-secondaryBackground);
           color: var(--vscode-button-secondaryForeground);
         }
+
         button.secondary:hover:not(:disabled) {
           background: var(--vscode-button-secondaryHoverBackground);
         }
+
+        button.ghost {
+          color: var(--vscode-descriptionForeground);
+          background: transparent;
+          border: 1px solid transparent;
+        }
+
+        button.ghost:hover:not(:disabled) {
+          color: var(--vscode-foreground);
+          background: var(--vscode-toolbar-hoverBackground);
+          border-color: var(--vscode-panel-border);
+        }
+
+        button.primary {
+          padding-inline: 10px;
+        }
+
         #stopButton {
           display: none;
         }
+
         #stopButton.visible {
-          display: block;
+          display: inline-block;
         }
+
         .hint {
-          margin-top: 8px;
+          margin-top: 6px;
           font-size: 11px;
-          opacity: 0.65;
-          text-align: center;
+          color: var(--vscode-descriptionForeground);
+          text-align: right;
         }
       </style>
     </head>
@@ -447,8 +589,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     <body>
       <div class="app">
         <div class="header">
-          <div class="title">OpenAI Assistant</div>
-          <div class="subtitle">Workspace context, approved edits, and commands.</div>
+          <div class="brand">
+            <div class="title">OpenAI Assistant</div>
+            <div class="subtitle">Workspace-aware coding agent</div>
+          </div>
+          <div class="top-actions">
+            <button class="ghost" title="Index workspace" data-busy-control onclick="indexWorkspace()">Index</button>
+            <button class="ghost" title="Clear chat" onclick="clearChat()">Clear</button>
+          </div>
         </div>
 
         <div id="messages">
@@ -463,37 +611,31 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
         <div class="composer">
           <div id="loading" class="loading">Thinking...</div>
-          <textarea id="prompt" placeholder="Ask a coding question..."></textarea>
-
-          <div class="quick-actions">
-            <button data-busy-control onclick="quickAsk('Explain the selected code clearly.')">Explain</button>
-            <button data-busy-control onclick="quickAsk('Find and fix bugs in the selected code.')">Fix</button>
-            <button data-busy-control onclick="quickAsk('Generate tests for the selected code.')">Tests</button>
+          <div class="composer-box">
+            <textarea id="prompt" placeholder="Ask, edit, or hand off a task..."></textarea>
+            <div class="composer-toolbar">
+              <div class="toolbar-group">
+                <button class="ghost" title="Explain selected code" data-busy-control onclick="quickAsk('Explain the selected code clearly.')">Explain</button>
+                <button class="ghost" title="Find and fix bugs" data-busy-control onclick="quickAsk('Find and fix bugs in the selected code.')">Fix</button>
+                <button class="ghost" title="Generate tests" data-busy-control onclick="quickAsk('Generate tests for the selected code.')">Tests</button>
+              </div>
+              <div class="toolbar-group">
+                <button class="ghost" title="Insert last code response" data-busy-control onclick="insertLastResponse()">Insert</button>
+                <button class="ghost" title="Replace current selection" data-busy-control onclick="replaceSelection()">Replace</button>
+                <button id="stopButton" class="secondary" onclick="stopGeneration()">Stop</button>
+                <button class="secondary" title="Ask with normal chat" data-busy-control onclick="sendMessage()">Ask</button>
+                <button class="primary" title="Plan approved edits" data-busy-control onclick="sendAgent()">Agent</button>
+              </div>
+            </div>
           </div>
-
-          <div class="actions">
-            <button data-busy-control onclick="sendMessage()">Send</button>
-            <button data-busy-control onclick="sendAgent()">Agent</button>
-            <button class="secondary" data-busy-control onclick="indexWorkspace()">Index</button>
+          <div class="composer-toolbar composer-footer">
+            <div class="toolbar-group">
+              <button class="ghost" title="Accept proposed edits" data-busy-control onclick="acceptEdits()">Accept</button>
+              <button class="ghost" title="Reject proposed edits" data-busy-control onclick="rejectEdits()">Reject</button>
+              <button class="ghost" title="Run approved terminal command" data-busy-control onclick="runCommand()">Run Cmd</button>
+            </div>
+            <div class="hint">Enter to ask · Shift+Enter newline</div>
           </div>
-
-          <div class="actions">
-            <button class="secondary" data-busy-control onclick="insertLastResponse()">Insert</button>
-            <button class="secondary" data-busy-control onclick="replaceSelection()">Replace</button>
-            <button class="secondary" onclick="clearChat()">Clear</button>
-          </div>
-
-          <div class="actions">
-            <button class="secondary" data-busy-control onclick="acceptEdits()">Accept</button>
-            <button class="secondary" data-busy-control onclick="rejectEdits()">Reject</button>
-            <button class="secondary" data-busy-control onclick="runCommand()">Run Cmd</button>
-          </div>
-
-          <div class="actions">
-            <button id="stopButton" class="secondary" onclick="stopGeneration()">Stop</button>
-          </div>
-
-          <div class="hint">Enter to send · Shift + Enter for new line</div>
         </div>
       </div>
 
@@ -602,6 +744,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           vscode.postMessage({ type: "agent-request", text });
         }
 
+        function sendFromKeyboard() {
+          const input = document.getElementById("prompt");
+          const text = input.value.trim();
+          if (!text) return;
+
+          if (/^(agent|plan|edit|change|implement|refactor|fix)\\b/i.test(text)) {
+            sendAgent();
+          } else {
+            sendMessage();
+          }
+        }
+
         function stopGeneration() {
           vscode.postMessage({ type: "stop-generation" });
         }
@@ -689,7 +843,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         document.getElementById("prompt").addEventListener("keydown", (event) => {
           if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
-            sendMessage();
+            sendFromKeyboard();
           }
         });
 

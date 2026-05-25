@@ -1,0 +1,78 @@
+{
+  "name": "openai-vscode-assistant",
+  "displayName": "OpenAI VS Code Assistant",
+  "description": "A personal coding assistant powered by the OpenAI API.",
+  "version": "0.0.1",
+  "publisher": "Ayomide Alaka",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:openaiAssistant.ask",
+    "onCommand:openaiAssistant.explainCode",
+    "onCommand:openaiAssistant.fixCode",
+    "onCommand:openaiAssistant.generateTests",
+    "onCommand:openaiAssistant.resetApiKey",
+    "onCommand:openaiAssistant.openChat"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "openaiAssistant.openChat",
+        "title": "OpenAI Assistant: Open Chat"
+      },
+      {
+        "command": "openaiAssistant.resetApiKey",
+        "title": "OpenAI Assistant: Reset API Key"
+      },
+      {
+        "command": "openaiAssistant.ask",
+        "title": "OpenAI Assistant: Ask"
+      },
+      {
+        "command": "openaiAssistant.explainCode",
+        "title": "OpenAI Assistant: Explain Selected Code"
+      },
+      {
+        "command": "openaiAssistant.fixCode",
+        "title": "OpenAI Assistant: Fix Selected Code"
+      },
+      {
+        "command": "openaiAssistant.generateTests",
+        "title": "OpenAI Assistant: Generate Tests"
+      }
+    ],
+    "configuration": {
+      "title": "OpenAI Assistant",
+      "properties": {
+        "openaiAssistant.model": {
+          "type": "string",
+          "default": "gpt-4.1-mini",
+          "description": "OpenAI model used by the coding assistant."
+        },
+        "openaiAssistant.maxOutputTokens": {
+          "type": "number",
+          "default": 1200,
+          "description": "Maximum output tokens for assistant responses."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "openai": "^4.104.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.4.5"
+  }
+}
